@@ -11,14 +11,6 @@ import Json.Decode.Pipeline as JP
 
 
 
-
--- UTILS
-
-clean : String -> String
-clean str = String.slice 1 (String.length str - 1) str
-
-
-
 -- MAIN
 
 main =
@@ -33,11 +25,9 @@ main =
 
 -- MODEL
 
-type alias Model = Maybe String
-
 init : () -> (Model, Cmd Msg)
 init _ =
-    ( Just ""
+    ( Loading
     , Http.get
         { url = "../static/Words.txt"
         , expect = Http.expectString GotWord
@@ -51,27 +41,38 @@ init _ =
 type Msg
     = GotWord (Result Http.Error String)
     | RandomInt Int
-    | GotDefinition (Result Http.Error String)
+    | GotDefinition (Result Http.Error (List Word))
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
     case msg of
-        -- On récupère la liste de mots et on génère un n
+
+        -- On récupère la liste de mots et on génère un nombre entier aléatoire
         GotWord result ->
             case result of
-                Ok wordList -> (Just wordList, Random.generate RandomInt (Random.int 0 998))
-                Err _ -> (Nothing, Cmd.none)
+                Ok wordList -> (GotList wordList, Random.generate RandomInt (Random.int 0 998))
+                Err _ -> (Error "Failed to generate a random ingeter.", Cmd.none)
+
+        -- On récupère l'élément à l'index du nombre aléatoire dans la liste de mots
         RandomInt n ->
             case model of
-                Just wordList ->
+                GotList wordList ->
                     case String.split " " wordList of
-                        [] -> (Nothing, Cmd.none)
-                        (x::xs) -> (List.head (List.drop n (x::xs)), getDefinition)
-                Nothing -> (Nothing, Cmd.none)
+                        [] -> (Error "The word list is empty.", Cmd.none)
+                        (x::xs) -> case (List.head (List.drop n (x::xs))) of
+                            Just answer -> (Loading, getDefinition answer)
+                            Nothing -> (Error "Failed to pick a random word.", Cmd.none)
+                Error err -> (Error err, Cmd.none)
+                Loading -> (Loading, Cmd.none)
+                Success _ -> (Error "", Cmd.none)
+
+        -- On récupère le premier élément de la liste de mots parsés
         GotDefinition result ->
             case result of
-                Ok def -> (Just defString, decodeString wordDecoder (clean def))
-                Err _ -> (Nothing, Cmd.none)
+                Ok defList -> case (List.head defList) of
+                    Just def -> (Success def, Cmd.none)
+                    Nothing -> (Error "The definitions list is empty.", Cmd.none)
+                Err _ -> (Error "Couldn't parse the Json.", Cmd.none)
 
 
 
@@ -85,26 +86,66 @@ subscriptions model =
 
 -- VIEW
 
-view : Model -> Html Msg
+-- Renvoie les synonymes d'un mot s'il y en a
+ifSyn : Definitions -> String
+ifSyn def = case def.synonyms of
+    [] -> ""
+    (x::xs) -> "\n-> synonyms: " ++ (String.join ", " def.synonyms)
+
+-- Renvoie les antonymes d'un mot s'il y en a
+ifAnt : Definitions -> String
+ifAnt def = case def.antonyms of
+    [] -> ""
+    (x::xs) -> "\n-> antonyms: " ++ (String.join ", " def.antonyms)
+
+-- Renvoie une liste d'élément html pour une défition du mot
+stringDefs : Word -> List (Html msg)
+stringDefs word = case List.head word.meanings of
+    Just meaning -> case List.head meaning.definitions of
+        Just def -> List.intersperse (br [] [])
+            (List.map text
+                (String.lines (def.definition ++ ifSyn def ++ ifAnt def))
+            )
+        Nothing -> []
+    Nothing -> []
+
+type Model
+  = Loading
+  | Error String
+  | GotList String
+  | Success Word
+
 view model =
-    pre [] [ text (case model of
-                        Just wordList -> wordList
-                        Nothing -> "Erreur de chargement !"
-                    )]
+  case model of
+    Loading ->
+        text "Loading..." 
+    Error err ->
+      div []
+        [ b [] [ text "ERROR" ]
+        , div [] [ text err ]
+        ]
+    GotList _ ->
+        text ""
+    Success word ->
+      div []
+        [ b [] [ text "・Definition 1:" ]
+        , blockquote [] (stringDefs word)
+        , p [ style "text-align" "right" ]
+            [ cite [] [ ]
+            , text word.word
+            , text " |"
+            ]
+        ]
 
 
 
 -- HTTP
 
-getDefinition : Cmd Msg
-getDefinition =
-    case model of
-        Just answer ->
-            Http.get
-                { url = "https://api.dictionaryapi.dev/api/v2/entries/en/" ++ answer
-                , expect = Http.expectJson GotDefinition 
-                }
-        Nothing -> (Nothing, Cmd.none)
+getDefinition : String -> Cmd Msg
+getDefinition answer = Http.get
+    { url = "https://api.dictionaryapi.dev/api/v2/entries/en/" ++ answer
+    , expect = Http.expectJson GotDefinition (list wordDecoder)
+    }
 
 
 
@@ -114,7 +155,6 @@ type alias Definitions =
     { definition : String
     , synonyms : List String
     , antonyms : List String
-    , example : String
     }
 
 type alias Meanings =
@@ -123,13 +163,11 @@ type alias Meanings =
     }
 
 type alias Phonetics =
-    { text : String
-    , audio : String
+    { audio : String
     }
 
 type alias Word =
     { word : String
-    , phonetic : String
     , phonetics : List Phonetics
     , meanings : List Meanings
     }
@@ -139,7 +177,6 @@ definitionsDecoder =
         |> JP.required "definition" string
         |> JP.required "synonyms" (list string)
         |> JP.required "antonyms" (list string)
-        |> JP.required "example" string
 
 meaningsDecoder =
     succeed Meanings
@@ -148,12 +185,10 @@ meaningsDecoder =
 
 phoneticsDecoder =
     succeed Phonetics
-        |> JP.required "text" string
         |> JP.required "audio" string
 
 wordDecoder =
     succeed Word
         |> JP.required "word" string
-        |> JP.required "phonetic" string
         |> JP.required "phonetics" (list phoneticsDecoder)
         |> JP.required "meanings" (list meaningsDecoder)
