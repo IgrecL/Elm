@@ -2,7 +2,7 @@ module Main exposing (..)
 
 import Browser
 import Html exposing (..)
-import Html.Attributes exposing (style)
+import Html.Attributes exposing (style, placeholder, value)
 import Html.Events exposing (..)
 import Http
 import Random
@@ -42,6 +42,7 @@ type Msg
     = GotWord (Result Http.Error String)
     | RandomInt Int
     | GotDefinition (Result Http.Error (List Word))
+    | NewGuess Word String
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
@@ -51,7 +52,7 @@ update msg model =
         GotWord result ->
             case result of
                 Ok wordList -> (GotList wordList, Random.generate RandomInt (Random.int 0 998))
-                Err _ -> (Error "Failed to generate a random ingeter.", Cmd.none)
+                Err _ -> (Error "Failed to generate a random integer.", Cmd.none)
 
         -- On récupère l'élément à l'index du nombre aléatoire dans la liste de mots
         RandomInt n ->
@@ -64,16 +65,19 @@ update msg model =
                             Nothing -> (Error "Failed to pick a random word.", Cmd.none)
                 Error err -> (Error err, Cmd.none)
                 Loading -> (Loading, Cmd.none)
-                Success _ -> (Error "", Cmd.none)
+                Success _ _ -> (Error "", Cmd.none)
 
         -- On récupère le premier élément de la liste de mots parsés
         GotDefinition result ->
             case result of
                 Ok defList -> case (List.head defList) of
-                    Just def -> (Success def, Cmd.none)
+                    Just def -> (Success def "", Cmd.none)
                     Nothing -> (Error "The definitions list is empty.", Cmd.none)
                 Err _ -> (Error "Couldn't parse the Json.", Cmd.none)
-
+        
+        NewGuess word newGuess ->
+            (Success word newGuess, Cmd.none)
+  
 
 
 -- SUBSCRIPTIONS
@@ -113,7 +117,7 @@ type Model
   = Loading
   | Error String
   | GotList String
-  | Success Word
+  | Success Word String
 
 view model =
   case model of
@@ -126,17 +130,24 @@ view model =
         ]
     GotList _ ->
         text ""
-    Success word ->
-      div []
-        [ b [] [ text "・Definition 1:" ]
-        , blockquote [] (stringDefs word)
-        , p [ style "text-align" "right" ]
-            [ cite [] [ ]
+    Success word guess ->
+        if word.word /= guess then
+            div []
+            [ b [] [ text "・Definition 1:" ]
+            , blockquote [] (stringDefs word)
+            , p [ style "text-align" "right" ]
+            [ cite [] []
             , text word.word
             , text " |"
             ]
-        ]
-
+            , input [ placeholder "Write your guess", Html.Attributes.value guess, onInput (NewGuess word) ] []
+            ]
+        else
+            div []
+            [ b [] [ text "Congratulations!" ]
+            , div [] [ text ("The word was '" ++ guess ++ "'") ]
+            , button [ ] [ text "Play again" ]
+            ]
 
 
 -- HTTP
