@@ -44,8 +44,8 @@ type Msg
     | GotWord (Result Http.Error String)
     | RandomInt Int
     | GotDefinition (Result Http.Error (List Word))
-    | NewGuess Word String
-    | ShowAnswer Word
+    | NewGuess (List Word) String
+    | ShowAnswer (List Word)
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
@@ -58,7 +58,7 @@ update msg model =
         GotWord result ->
             case result of
                 Ok wordList -> (GotList wordList, Random.generate RandomInt (Random.int 0 998))
-                Err _ -> (Error "Failed to generate a random integer.", Cmd.none)
+                Err _ -> (Error "Failed to get the word list. Maybe you launched elm reactor from /src (or another folder). If so, you should run in from the parent folder.", Cmd.none)
 
         -- On récupère l'élément à l'index du nombre aléatoire dans la liste de mots
         RandomInt n ->
@@ -77,18 +77,16 @@ update msg model =
         -- On récupère le premier élément de la liste de mots parsés
         GotDefinition result ->
             case result of
-                Ok defList -> case (List.head defList) of
-                    Just def -> (Success def "", Cmd.none)
-                    Nothing -> (Error "The definitions list is empty.", Cmd.none)
-                Err _ -> (Error "Couldn't parse the Json.", Navigation.reload)
+                Ok wordList -> (Success wordList "", Cmd.none)
+                Err _ -> (Error "Unable to retreive the json. Dictionary API may be down. Try to refresh the page or check if you can access the API directly from here: https://api.dictionaryapi.dev/api/v2/entries/en/error", Cmd.none)
         
         -- On met à jour la valeur de guess
-        NewGuess word guess ->
-            (Success word guess, Cmd.none)
+        NewGuess wordList guess ->
+            (Success wordList guess, Cmd.none)
   
-        --
-        ShowAnswer word ->
-            (Answer word, Cmd.none)
+        -- On affiche la réponse
+        ShowAnswer wordList ->
+            (Answer wordList, Cmd.none)
 
 
 -- SUBSCRIPTIONS
@@ -102,44 +100,39 @@ subscriptions model =
 -- FONCTIONS POUR VIEW
 
 -- Renvoie les synonymes d'un mot s'il y en a
-ifSyn : Definitions -> String
+ifSyn : Definition -> String
 ifSyn def = case def.synonyms of
-    [] -> ""
     (x::xs) -> "\n-> synonyms: " ++ (String.join ", " def.synonyms)
+    [] -> ""
 
 -- Renvoie les antonymes d'un mot s'il y en a
-ifAnt : Definitions -> String
+ifAnt : Definition -> String
 ifAnt def = case def.antonyms of
-    [] -> ""
     (x::xs) -> "\n-> antonyms: " ++ (String.join ", " def.antonyms)
+    [] -> ""
 
 -- Renvoie un élément html <li> pour la n-ième définition du mot
-stringDef : Int -> Meanings -> Html msg
-stringDef n meaning = case List.head (List.drop n meaning.definitions) of
-    Just def -> li [] (List.intersperse (br [] [])
-        (List.map text
-            (String.lines (def.definition ++ ifSyn def ++ ifAnt def))
-        ))
-    Nothing -> li [] []
+toStringDef : Definition -> Html msg
+toStringDef def = li [] (List.intersperse (br [] []) (List.map text
+        (String.lines (def.definition ++ ifSyn def ++ ifAnt def))
+    ))
 
--- Renvoie une liste d'éléments html <li> qui correspondent chacun à une définition pour ce 'meaning'
-definitionHtml : Int -> Int -> Word -> List (Html msg)
-definitionHtml m n word = case List.head (List.drop m word.meanings) of
-    Just meaning -> case List.drop n meaning.definitions of
-        (x :: xs) -> (stringDef n meaning) :: (definitionHtml m (n+1) word)
-        [] -> []
-    Nothing -> []
+-- Renvoie une liste d'éléments html <li> correspondant chacun à une définition pour ce sens 
+defHtml : List Definition -> List (Html msg)
+defHtml defList = case defList of
+    def :: defs -> toStringDef def :: defHtml defs
+    [] -> []
 
--- Renvoie un élément html text qui contient la classe grammatical du mot pour ce 'meaning' 
-partsOfSpeech : Int -> Word -> Html msg
-partsOfSpeech m word = case List.head (List.drop m word.meanings) of
-    Just meaning -> b [] [text meaning.partsOfSpeech]
-    Nothing -> text ""
+-- Renvoie une liste d'éléments html <li> correspondant chacun à un 'meaning' pour ce sens (classe grammaticale + <ol> des définitions)
+meaningHtml : List Meaning -> List (Html msg)
+meaningHtml meaningList = case meaningList of
+    meaning :: meanings -> li [] [ text meaning.partsOfSpeech, ol [] (defHtml meaning.definitions) ] :: meaningHtml meanings 
+    [] -> []
 
--- Renvoie une liste d'éléments html <li> correspondant chacun à un 'meaning' du sens (classe grammaticale + <ol> des définitions)
-senseHtml : Int -> Word -> List (Html msg)
-senseHtml m word = case List.drop m word.meanings of
-    (x :: xs) -> (li [] [ partsOfSpeech m word , ol [] (definitionHtml m 0 word) ]) :: (senseHtml (m+1) word) 
+-- Renvoie une liste d'éléments html <li> correspondant chacun à un élément du tableau Json, c'est-à-dire à un sens du mot (souvent 1 seul)
+wordHtml : List Word -> List (Html msg)
+wordHtml wordList = case wordList of
+    word :: words -> li [] [ ul [] (meaningHtml word.meanings) ] :: wordHtml words
     [] -> []
 
 
@@ -150,56 +143,77 @@ type Model
   = Loading
   | Error String
   | GotList String
-  | Success Word String
-  | Answer Word
+  | Success (List Word) String
+  | Answer (List Word)
 
 view model =
   case model of
 
     Loading ->
         div []
-        [ h1 [ style "text-align" "center", style "font-size" "50px" ] [ text "Guess it!" ]
-        , div [ style "text-align" "center", style "font-size" "20px" ] [text "Loading..."]
-        ]
+            [ h1 [ style "text-align" "center", style "font-size" "50px" ] [ text "Guess it!" ]
+            , div [ style "text-align" "center", style "font-size" "20px" ] [text "Loading..."]
+            ]
 
     Error err ->
-      div []
-        [ b [ style "text-align" "center" ] [ text "ERROR" ]
-        , div [] [ text err ]
-        ]
+        div []
+            [ b [ style "text-align" "center" ] [ text "ERROR" ]
+            , div [] [ text err ]
+            ]
 
     GotList _ ->
         text ""
     
     -- Page affichée quand le joueur est en train de chercher le mot ou qu'il l'a trouvé
-    Success word guess ->
-
-        -- Le joueur cherche le mot
-        if word.word /= guess then
-            div []
-            [ h1 [ style "text-align" "center", style "font-size" "50px" ] [ text "Guess it!" ]
-            , div [ style "text-align" "center" ] [
-                input
-                    [ style "text-align" "center"
-                    , style "font-size" "20px"
-                    , style "width" "193px"
-                    , placeholder "Write your guess"
-                    , Html.Attributes.value guess, onInput (NewGuess word) 
-                    ] []
-                , br [] []
-                , button
-                    [ style "text-align" "center"
-                    , style "font-size" "20px"
-                    , style "margin-top" "3px"
-                    , style "width" "200px"
-                    , onClick (ShowAnswer word) 
-                    ] [ text "Show answer" ]
+    Success wordList guess -> case List.head wordList of
+        Just word ->
+            -- Le joueur cherche le mot
+            if word.word /= guess then
+                div []
+                [ h1 [ style "text-align" "center", style "font-size" "50px" ] [ text "Guess it!" ]
+                , div [ style "text-align" "center" ] [
+                    input
+                        [ style "text-align" "center"
+                        , style "font-size" "20px"
+                        , style "width" "193px"
+                        , placeholder "Write your guess"
+                        , Html.Attributes.value guess, onInput (NewGuess wordList) 
+                        ] []
+                    , br [] []
+                    , button
+                        [ style "text-align" "center"
+                        , style "font-size" "20px"
+                        , style "margin-top" "3px"
+                        , style "width" "200px"
+                        , onClick (ShowAnswer wordList) 
+                        ] [ text "Show answer" ]
+                    ]
+                    , ol [ style "margin-left" "30px", style "margin-right" "100px" ] (wordHtml wordList)
                 ]
-            , ul [ style "margin-left" "50px", style "margin-right" "80px" ] (senseHtml 0 word)
+            -- Le joueur a trouvé le mot et on lui demande s'il veut rejouer
+            else
+                div []
+                [ h1 [ style "text-align" "center", style "font-size" "50px" ] [ text "Guess it!" ]
+                , div [ style "text-align" "center" ]
+                    [ div [ style "font-size" "20px" ] [ text ("The answer was '" ++ word.word ++ "'") ]
+                    , button
+                        [ style "text-align" "center"
+                        , style "font-size" "20px"
+                        , style "margin-top" "5px"
+                        , style "width" "200px"
+                        , onClick Again 
+                        ] [ text "Play again" ]
+                    , div [ style "margin-top" "100px", style "font-size" "70px" ] [ text "Congratulations!" ]
+                    ]
+                ]
+        Nothing -> div []
+            [ b [ style "text-align" "center" ] [ text "ERROR" ]
+            , div [] [ text "The word list is empty." ]
             ]
 
-        -- Le joueur a trouvé le mot et on lui demande s'il veut rejouer
-        else
+    -- Si le joueur appuie sur "Show answser" il est amenée sur cette page
+    Answer wordList -> case List.head wordList of
+        Just word ->
             div []
             [ h1 [ style "text-align" "center", style "font-size" "50px" ] [ text "Guess it!" ]
             , div [ style "text-align" "center" ]
@@ -209,27 +223,14 @@ view model =
                     , style "font-size" "20px"
                     , style "margin-top" "5px"
                     , style "width" "200px"
-                    , onClick Again 
-                    ] [ text "Play again" ]
-                , div [ style "margin-top" "100px", style "font-size" "70px" ] [ text "Congratulations!" ]
+                    , onClick Again ] [ text "Play again" ]
                 ]
+            , ol [ style "margin-left" "30px", style "margin-right" "100px" ] (wordHtml wordList)
             ]
-    
-    -- Si le joueur appuie sur "Show answser" il est amenée sur cette page
-    Answer word ->
-        div []
-        [ h1 [ style "text-align" "center", style "font-size" "50px" ] [ text "Guess it!" ]
-        , div [ style "text-align" "center" ]
-            [ div [ style "font-size" "20px" ] [ text ("The answer was '" ++ word.word ++ "'") ]
-            , button
-                [ style "text-align" "center"
-                , style "font-size" "20px"
-                , style "margin-top" "5px"
-                , style "width" "200px"
-                , onClick Again ] [ text "Play again" ]
+        Nothing -> div []
+            [ b [ style "text-align" "center" ] [ text "ERROR" ]
+            , div [] [ text "The word list is empty." ]
             ]
-        , ul [ style "margin-left" "50px", style "margin-right" "80px" ] (senseHtml 0 word)
-        ]
 
 
 -- HTTP
@@ -244,15 +245,15 @@ getDefinition answer = Http.get
 
 -- JSON PARSING
 
-type alias Definitions =
+type alias Definition =
     { definition : String
     , synonyms : List String
     , antonyms : List String
     }
 
-type alias Meanings =
+type alias Meaning =
     { partsOfSpeech : String
-    , definitions : List Definitions
+    , definitions : List Definition
     }
 
 type alias Phonetics =
@@ -262,19 +263,19 @@ type alias Phonetics =
 type alias Word =
     { word : String
     , phonetics : List Phonetics
-    , meanings : List Meanings
+    , meanings : List Meaning
     }
 
-definitionsDecoder =
-    succeed Definitions
+defDecoder =
+    succeed Definition
         |> JP.required "definition" string
         |> JP.required "synonyms" (list string)
         |> JP.required "antonyms" (list string)
 
-meaningsDecoder =
-    succeed Meanings
+meaningDecoder =
+    succeed Meaning
         |> JP.required "partOfSpeech" string
-        |> JP.required "definitions" (list definitionsDecoder)
+        |> JP.required "definitions" (list defDecoder)
 
 phoneticsDecoder =
     succeed Phonetics
@@ -284,4 +285,4 @@ wordDecoder =
     succeed Word
         |> JP.required "word" string
         |> JP.required "phonetics" (list phoneticsDecoder)
-        |> JP.required "meanings" (list meaningsDecoder)
+        |> JP.required "meanings" (list meaningDecoder)
