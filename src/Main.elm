@@ -1,6 +1,7 @@
 module Main exposing (..)
 
 import Browser
+import Browser.Navigation as Navigation
 import Html exposing (..)
 import Html.Attributes exposing (style, placeholder, value)
 import Html.Events exposing (..)
@@ -39,7 +40,8 @@ init _ =
 -- UPDATE
 
 type Msg
-    = GotWord (Result Http.Error String)
+    = Again
+    | GotWord (Result Http.Error String)
     | RandomInt Int
     | GotDefinition (Result Http.Error (List Word))
     | NewGuess Word String
@@ -47,6 +49,9 @@ type Msg
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
     case msg of
+
+        -- On recharge la page
+        Again -> (Loading, Navigation.reload)
 
         -- On récupère la liste de mots et on génère un nombre entier aléatoire
         GotWord result ->
@@ -73,10 +78,11 @@ update msg model =
                 Ok defList -> case (List.head defList) of
                     Just def -> (Success def "", Cmd.none)
                     Nothing -> (Error "The definitions list is empty.", Cmd.none)
-                Err _ -> (Error "Couldn't parse the Json.", Cmd.none)
+                Err _ -> (Error "Couldn't parse the Json.", Navigation.reload)
         
-        NewGuess word newGuess ->
-            (Success word newGuess, Cmd.none)
+        -- On met à jour la valeur de guess
+        NewGuess word guess ->
+            (Success word guess, Cmd.none)
   
 
 
@@ -146,7 +152,7 @@ view model =
             div []
             [ b [] [ text "Congratulations!" ]
             , div [] [ text ("The word was '" ++ guess ++ "'") ]
-            , button [ ] [ text "Play again" ]
+            , button [ onClick Again ] [ text "Play again" ]
             ]
 
 
