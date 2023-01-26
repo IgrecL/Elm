@@ -45,6 +45,7 @@ type Msg
     | RandomInt Int
     | GotDefinition (Result Http.Error (List Word))
     | NewGuess Word String
+    | ShowAnswer Word
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
@@ -71,6 +72,7 @@ update msg model =
                 Error err -> (Error err, Cmd.none)
                 Loading -> (Loading, Cmd.none)
                 Success _ _ -> (Error "", Cmd.none)
+                Answer _ -> (Error "", Cmd.none)
 
         -- On récupère le premier élément de la liste de mots parsés
         GotDefinition result ->
@@ -84,6 +86,9 @@ update msg model =
         NewGuess word guess ->
             (Success word guess, Cmd.none)
   
+        --
+        ShowAnswer word ->
+            (Answer word, Cmd.none)
 
 
 -- SUBSCRIPTIONS
@@ -94,7 +99,7 @@ subscriptions model =
 
 
 
--- VIEW
+-- FONCTIONS POUR VIEW
 
 -- Renvoie les synonymes d'un mot s'il y en a
 ifSyn : Definitions -> String
@@ -108,52 +113,123 @@ ifAnt def = case def.antonyms of
     [] -> ""
     (x::xs) -> "\n-> antonyms: " ++ (String.join ", " def.antonyms)
 
--- Renvoie une liste d'élément html pour une défition du mot
-stringDefs : Word -> List (Html msg)
-stringDefs word = case List.head word.meanings of
-    Just meaning -> case List.head meaning.definitions of
-        Just def -> List.intersperse (br [] [])
-            (List.map text
-                (String.lines (def.definition ++ ifSyn def ++ ifAnt def))
-            )
-        Nothing -> []
+-- Renvoie un élément html <li> pour la n-ième définition du mot
+stringDef : Int -> Meanings -> Html msg
+stringDef n meaning = case List.head (List.drop n meaning.definitions) of
+    Just def -> li [] (List.intersperse (br [] [])
+        (List.map text
+            (String.lines (def.definition ++ ifSyn def ++ ifAnt def))
+        ))
+    Nothing -> li [] []
+
+-- Renvoie une liste d'éléments html <li> qui correspondent chacun à une définition pour ce 'meaning'
+definitionHtml : Int -> Int -> Word -> List (Html msg)
+definitionHtml m n word = case List.head (List.drop m word.meanings) of
+    Just meaning -> case List.drop n meaning.definitions of
+        (x :: xs) -> (stringDef n meaning) :: (definitionHtml m (n+1) word)
+        [] -> []
     Nothing -> []
+
+-- Renvoie un élément html text qui contient la classe grammatical du mot pour ce 'meaning' 
+partsOfSpeech : Int -> Word -> Html msg
+partsOfSpeech m word = case List.head (List.drop m word.meanings) of
+    Just meaning -> b [] [text meaning.partsOfSpeech]
+    Nothing -> text ""
+
+-- Renvoie une liste d'éléments html <li> correspondant chacun à un 'meaning' du sens (classe grammaticale + <ol> des définitions)
+senseHtml : Int -> Word -> List (Html msg)
+senseHtml m word = case List.drop m word.meanings of
+    (x :: xs) -> (li [] [ partsOfSpeech m word , ol [] (definitionHtml m 0 word) ]) :: (senseHtml (m+1) word) 
+    [] -> []
+
+
+
+-- VIEW
 
 type Model
   = Loading
   | Error String
   | GotList String
   | Success Word String
+  | Answer Word
 
 view model =
   case model of
+
     Loading ->
-        text "Loading..." 
+        div []
+        [ h1 [ style "text-align" "center", style "font-size" "50px" ] [ text "Guess it!" ]
+        , div [ style "text-align" "center", style "font-size" "20px" ] [text "Loading..."]
+        ]
+
     Error err ->
       div []
-        [ b [] [ text "ERROR" ]
+        [ b [ style "text-align" "center" ] [ text "ERROR" ]
         , div [] [ text err ]
         ]
+
     GotList _ ->
         text ""
+    
+    -- Page affichée quand le joueur est en train de chercher le mot ou qu'il l'a trouvé
     Success word guess ->
+
+        -- Le joueur cherche le mot
         if word.word /= guess then
             div []
-            [ b [] [ text "・Definition 1:" ]
-            , blockquote [] (stringDefs word)
-            , p [ style "text-align" "right" ]
-            [ cite [] []
-            , text word.word
-            , text " |"
+            [ h1 [ style "text-align" "center", style "font-size" "50px" ] [ text "Guess it!" ]
+            , div [ style "text-align" "center" ] [
+                input
+                    [ style "text-align" "center"
+                    , style "font-size" "20px"
+                    , style "width" "193px"
+                    , placeholder "Write your guess"
+                    , Html.Attributes.value guess, onInput (NewGuess word) 
+                    ] []
+                , br [] []
+                , button
+                    [ style "text-align" "center"
+                    , style "font-size" "20px"
+                    , style "margin-top" "3px"
+                    , style "width" "200px"
+                    , onClick (ShowAnswer word) 
+                    ] [ text "Show answer" ]
+                ]
+            , ul [ style "margin-left" "50px", style "margin-right" "80px" ] (senseHtml 0 word)
             ]
-            , input [ placeholder "Write your guess", Html.Attributes.value guess, onInput (NewGuess word) ] []
-            ]
+
+        -- Le joueur a trouvé le mot et on lui demande s'il veut rejouer
         else
             div []
-            [ b [] [ text "Congratulations!" ]
-            , div [] [ text ("The word was '" ++ guess ++ "'") ]
-            , button [ onClick Again ] [ text "Play again" ]
+            [ h1 [ style "text-align" "center", style "font-size" "50px" ] [ text "Guess it!" ]
+            , div [ style "text-align" "center" ]
+                [ div [ style "font-size" "20px" ] [ text ("The answer was '" ++ word.word ++ "'") ]
+                , button
+                    [ style "text-align" "center"
+                    , style "font-size" "20px"
+                    , style "margin-top" "5px"
+                    , style "width" "200px"
+                    , onClick Again 
+                    ] [ text "Play again" ]
+                , div [ style "margin-top" "100px", style "font-size" "70px" ] [ text "Congratulations!" ]
+                ]
             ]
+    
+    -- Si le joueur appuie sur "Show answser" il est amenée sur cette page
+    Answer word ->
+        div []
+        [ h1 [ style "text-align" "center", style "font-size" "50px" ] [ text "Guess it!" ]
+        , div [ style "text-align" "center" ]
+            [ div [ style "font-size" "20px" ] [ text ("The answer was '" ++ word.word ++ "'") ]
+            , button
+                [ style "text-align" "center"
+                , style "font-size" "20px"
+                , style "margin-top" "5px"
+                , style "width" "200px"
+                , onClick Again ] [ text "Play again" ]
+            ]
+        , ul [ style "margin-left" "50px", style "margin-right" "80px" ] (senseHtml 0 word)
+        ]
 
 
 -- HTTP
