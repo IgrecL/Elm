@@ -1,7 +1,8 @@
 # Guess It
 
 Jeu codé en [Elm](https://elm-lang.org/) où il faut deviner un mot à partir de sa définition.<br>
-Le mot est choisi parmi les 1000 plus courants dans le livre *Thing Explainer: Complicated Stuff in Simple Words* de Randall Munroe, et les définitions sont récupérées sur le site [Free Dictionary API](https://dictionaryapi.dev/).
+Le mot est choisi parmi les 1000 plus courants dans le livre *Thing Explainer: Complicated Stuff in Simple Words* de Randall Munroe, et les définitions sont récupérées sur le site [Free Dictionary API](https://dictionaryapi.dev/).<br>
+Si le mot est trouvé ou que le joueur a abandonné, les audios de prononciation du mot sont joués.
 
 ## Comment jouer
 

@@ -3,7 +3,7 @@ module Main exposing (..)
 import Browser
 import Browser.Navigation as Navigation
 import Html exposing (..)
-import Html.Attributes exposing (style, placeholder, value)
+import Html.Attributes exposing (..)
 import Html.Events exposing (..)
 import Http
 import Random
@@ -87,8 +87,7 @@ update msg model =
         -- On affiche la réponse
         ShowAnswer wordList ->
             (Answer wordList, Cmd.none)
-
-
+        
 -- SUBSCRIPTIONS
 
 subscriptions : Model -> Sub Msg
@@ -135,7 +134,19 @@ wordHtml wordList = case wordList of
     word :: words -> li [] [ ul [] (meaningHtml word.meanings) ] :: wordHtml words
     [] -> []
 
-
+-- Permet d'extraire les liens vers les prononciations du mot
+audioHtml : List Word -> List (Html msg)
+audioHtml wordList = case wordList of
+    word :: words -> case word.phonetics of
+        phonetic :: phonetics -> phoneticHtml word.phonetics
+        [] -> []
+    [] -> []
+phoneticHtml : List Phonetics -> List (Html msg) 
+phoneticHtml phonList = case phonList of
+    phonetic :: phonetics -> if phonetic.audio == ""
+        then phoneticHtml phonetics
+        else br [] [] :: audio [ src phonetic.audio, controls True ] [] :: phoneticHtml phonetics
+    [] -> []
 
 -- VIEW
 
@@ -203,7 +214,8 @@ view model =
                         , style "width" "200px"
                         , onClick Again 
                         ] [ text "Play again" ]
-                    , div [ style "margin-top" "100px", style "font-size" "70px" ] [ text "Congratulations!" ]
+                    , div [] (audioHtml wordList)
+                    , div [ style "margin-top" "90px", style "font-size" "70px" ] [ text "Congratulations!" ]
                     ]
                 ]
         Nothing -> div []
@@ -224,6 +236,7 @@ view model =
                     , style "margin-top" "5px"
                     , style "width" "200px"
                     , onClick Again ] [ text "Play again" ]
+                    , div [] (audioHtml wordList)
                 ]
             , ol [ style "margin-left" "30px", style "margin-right" "100px" ] (wordHtml wordList)
             ]
@@ -238,7 +251,7 @@ view model =
 getDefinition : String -> Cmd Msg
 getDefinition answer = Http.get
     { url = "https://api.dictionaryapi.dev/api/v2/entries/en/" ++ answer
-    , expect = Http.expectJson GotDefinition (list wordDecoder)
+    , expect = Http.expectJson GotDefinition (Json.Decode.list wordDecoder)
     }
 
 
@@ -269,13 +282,13 @@ type alias Word =
 defDecoder =
     succeed Definition
         |> JP.required "definition" string
-        |> JP.required "synonyms" (list string)
-        |> JP.required "antonyms" (list string)
+        |> JP.required "synonyms" (Json.Decode.list string)
+        |> JP.required "antonyms" (Json.Decode.list string)
 
 meaningDecoder =
     succeed Meaning
         |> JP.required "partOfSpeech" string
-        |> JP.required "definitions" (list defDecoder)
+        |> JP.required "definitions" (Json.Decode.list defDecoder)
 
 phoneticsDecoder =
     succeed Phonetics
@@ -284,5 +297,5 @@ phoneticsDecoder =
 wordDecoder =
     succeed Word
         |> JP.required "word" string
-        |> JP.required "phonetics" (list phoneticsDecoder)
-        |> JP.required "meanings" (list meaningDecoder)
+        |> JP.required "phonetics" (Json.Decode.list phoneticsDecoder)
+        |> JP.required "meanings" (Json.Decode.list meaningDecoder)
