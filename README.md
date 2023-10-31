@@ -2,6 +2,10 @@
 
 A game coded in [Elm](https://elm-lang.org/) where you have to guess a word based on its definition. The word is chosen from the 1000 most common words in the book *Thing Explainer: Complicated Stuff in Simple Words* by Randall Munroe, and the definitions are retrieved from the [Free Dictionary API](https://dictionaryapi.dev/).
 
+![guessit](https://github.com/IgrecL/elm-guessit/assets/99618877/29e51391-5f81-4028-9b5a-58b1690e1a61)
+
+This project was created as part of an introductory course on functional programming.
+
 ## How to Play
 
 1. Install [Elm](https://elm-lang.org/).
