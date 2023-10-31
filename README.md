@@ -1,12 +1,10 @@
 # Guess It
 
-Jeu codé en [Elm](https://elm-lang.org/) où il faut deviner un mot à partir de sa définition.<br>
-Le mot est choisi parmi les 1000 plus courants dans le livre *Thing Explainer: Complicated Stuff in Simple Words* de Randall Munroe, et les définitions sont récupérées sur le site [Free Dictionary API](https://dictionaryapi.dev/).<br>
-Si le mot est trouvé ou que le joueur a abandonné, les audios de prononciation du mot sont joués.
+A game coded in [Elm](https://elm-lang.org/) where you have to guess a word based on its definition. The word is chosen from the 1000 most common words in the book *Thing Explainer: Complicated Stuff in Simple Words* by Randall Munroe, and the definitions are retrieved from the [Free Dictionary API](https://dictionaryapi.dev/).
 
-## Comment jouer
+## How to Play
 
-1. Installez [Elm](https://elm-lang.org/)
-2. Exécutez la commande shell `elm reactor` dans le dossier 'elm' (attention, ne pas exécuter pas depuis /src)
-3. Allez à l'adresse http://localhost:8000 dans votre navigateur et cliquez sur 'Main.elm'
-4. Pour faire une proposition de mot, il suffit d'écrire dans le champ 'Write your guess'
+1. Install [Elm](https://elm-lang.org/).
+2. Run the shell command `elm reactor` in the 'elm' folder (be sure not to run it from /src).
+3. Go to http://localhost:8000 in your browser and click on 'Main.elm'.
+4. To make a guess for the word, simply type it into the 'Write your guess' field.
